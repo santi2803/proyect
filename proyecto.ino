@@ -69,16 +69,17 @@ Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, rows, cols);
 /*==================================
  * Global Variables
 ====================================*/
-bool pass = false;
+bool pass = false, menu = false;
 byte tarjeta[4] = {0x87, 0x49, 0xC1, 0x4D};
 byte lecturaUID[4];
-int digito = 0;
+int digito = 0, reporte[7], contador, opc, posicion, dato;
+short pos_libre;
 int pinServo = 11;
 int PulsoMin = 1000;
 int PulsoMax = 2000;
 int rojo = 12;
 int verde = 13;
-char codigo[4], password[] = "1234", admin[] = "4321";
+char codigo[4], password[] = "1234", admin[] = "4321", opcMenu[] = "12";
 
 void setup() {
   // put your setup code here, to run once:
@@ -92,7 +93,7 @@ void setup() {
   Serial.println("Date: ");
   Serial.println(now.day());
   Serial.println(now.month());
-  Serial.println(now.year());
+  Serial.println(atoi(now.toString("YY")));
   Serial.print("Hour: ");
   Serial.println(now.hour());
   Serial.println(now.minute());
@@ -100,7 +101,7 @@ void setup() {
   // Servo
   servo.attach(pinServo, PulsoMin, PulsoMax);
   delay(1000);
-  servo.write(190);
+  servo.write(200);
 
   // Limpiar eeprom externa
   /*
@@ -142,6 +143,25 @@ void pedirPass() {
       }
       if (comparaUID(lecturaUID, tarjeta)) {
         Serial.println("Correcto");
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Siga");
+        if (pos_libre == true) {
+          DateTime now = rtc.now();
+          reporte[0] = contador;
+          reporte[1] = now.day();
+          reporte[2] = now.month();
+          reporte[3] = atoi(now.toString("YY"));
+          reporte[4] = now.hour();
+          reporte[5] = now.minute();
+          reporte[6] = now.second();
+
+          for (int i = 0; i < 7; i++) {   
+            EepromRTC.write(posicion,(byte *)reporte[i]);               
+            delay(5);
+            posicion = posicion + 1;
+          }
+        }
         digitalWrite(verde, HIGH);
         digitalWrite(rojo, LOW);
         abrir();
@@ -170,8 +190,28 @@ void pedirPass() {
         if (digito == 4) {
           if (comparaPassword()) {
             Serial.println("Correcto");
+            lcd.clear();
+            lcd.setCursor(0,0);
+            lcd.print("Siga");
             digitalWrite(verde, HIGH);
             digitalWrite(rojo, LOW);
+            buscar_pos_libre();
+            if (pos_libre == true) {
+              DateTime now = rtc.now();
+              reporte[0] = contador;
+              reporte[1] = now.day();
+              reporte[2] = now.month();
+              reporte[3] = atoi(now.toString("YY"));
+              reporte[4] = now.hour();
+              reporte[5] = now.minute();
+              reporte[6] = now.second();
+
+              for (int i = 0; i < 7; i++) {   
+                EepromRTC.write(posicion,(byte *)reporte[i]);               
+                delay(5);
+                posicion = posicion + 1;
+              }
+            }
             abrir();
             pass = false;
             cerrar();            
@@ -183,6 +223,12 @@ void pedirPass() {
           } else {
             if (compareAdmin()) {
               pass = false;
+              digitalWrite(verde, HIGH);
+              digitalWrite(rojo, LOW);
+              delay(1000);
+              digitalWrite(verde, LOW);
+              digitalWrite(rojo, HIGH);
+              menuAdmin();
               Serial.println("Correcto");
             } else {
               pass = false;
@@ -200,6 +246,31 @@ void pedirPass() {
     }
   }
   
+}
+
+void getOptMenu() {
+  char tecla = keypad.getKey();
+  if (tecla != NO_KEY) {
+    opc = tecla;
+    digito++;
+    delay(50);
+    if (digito == 1) {
+      menu = false;
+      if (opc == opcMenu[0]) {
+        getReports();
+      } 
+
+      if (opc == opcMenu[1]) {
+        bienvenida();
+      }
+      
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("Opcion no valida");
+      delay(1500);
+      menuAdmin();
+    }
+  }
 }
 
 /*===============================================
@@ -248,6 +319,9 @@ void bienvenida() {
   pedirPinOTarjeta();
 }
 
+/*===============================================
+PEDIR PIN O TARJETA
+=================================================*/
 void pedirPinOTarjeta() {
   digito = 0;
   codigo[0] = "";
@@ -264,13 +338,80 @@ void pedirPinOTarjeta() {
   pedirPass();
 }
 
+/*===============================================
+ABRIR SERVO
+=================================================*/
 void abrir() {
-  servo.write(190);
+  servo.write(200);
   delay(1000);
-  servo.write(-90);
+  servo.write(-180);
 }
-
+/*===============================================
+CERRAR EL SERVO
+=================================================*/
 void cerrar() {
   delay(5000);
-  servo.write(190);
+  servo.write(200);
+}
+
+void menuAdmin() {
+  digito = 0;
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("1).Ver reportes");
+  lcd.setCursor(0,1);
+  lcd.print("2).Salir");
+  menu = true;
+  while (menu) {
+    getOptMenu();
+  }
+}
+/*===============================================
+OBTENER REPORTES
+=================================================*/
+void getReports() {
+  const char* opts[] = {"REPORTE", "Day", "Month", "Year", "Hour", "Minute", "Second"};
+  int add = 0;
+  int opt = 0;
+  byte value = EepromRTC.read(add);
+  while(value != 0) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(opt[opts]);
+    lcd.print(" ");
+    lcd.print(value);
+    delay(1000);
+
+    lcd.clear();
+
+    add++;
+    opt++;
+    value = EepromRTC.read(add);     
+    if (add == 7 || add == 14 || add == 21 || add == 28 || add == 35 || add == 42 || add == 49 || add == 56 || add == 63 || add == 70 || add == 77 || add == 84 || add == 91 || add == 98 || add == 105) {
+      opt = 0;
+    }
+  }
+  delay(100);
+  lcd.print("Fin...");
+  delay(1000);
+  menuAdmin();
+}
+/*===============================================
+BUSCAR POS LIBRE
+=================================================*/
+void buscar_pos_libre() {
+  posicion = 0;
+  pos_libre = false;
+  contador = 0;
+  do {
+      
+    dato = EepromRTC.read(posicion);
+      
+    if (dato == 0) {
+      pos_libre = true;
+    } else {
+      posicion += 7;      
+    }
+    contador++;
+  } while (pos_libre == false);
 }
