@@ -146,6 +146,7 @@ void pedirPass() {
         lcd.clear();
         lcd.setCursor(0,0);
         lcd.print("Siga");
+        buscar_pos_libre();
         if (pos_libre == true) {
           DateTime now = rtc.now();
           reporte[0] = contador;
